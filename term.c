@@ -1,28 +1,50 @@
-bool g0_graphics = false;
-bool g1_graphics = false;
-bool use_g1 = false;
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include "term.h"
+#include "unicodetocodepage.h"
 
-bool mode_appkeypad = false;
-bool mode_insert = false;
-bool mode_origin = false;
-bool mode_crlf = false;
+bool g0_graphics; 
+bool g1_graphics;
+bool mode_shiftout;
+bool mode_appkeypad;
+bool mode_insert;
+bool mode_origin;
+bool mode_crlf;
 
-int attr_fgcolor = 7;
-int attr_bgcolor = 0;
-bool attr_bright = false;
-bool attr_underline = false;
-bool attr_reverse = false;
+int scroll_top;
+int scroll_bottom;
 
-int saved_x = 0;
-int saved_y = 0;
-int saved_fgcolor = 7;
-int saved_bgcolor = 0;
-bool saved_bright = false;
-bool saved_underline = false;
-bool saved_reverse = false;
+int tabs[TERM_WIDTH];
+
+int attr_fgcolor;
+int attr_bgcolor;
+bool attr_bright;
+bool attr_underline;
+bool attr_reverse;
+
+int saved_x;
+int saved_y;
+int saved_fgcolor;
+int saved_bgcolor;
+bool saved_bright;
+bool saved_underline;
+bool saved_reverse;
 
 int params[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 int paramc = 0;
+int32_t unicode;
+char temp[32];
+
+char term_chars[TERM_WIDTH * TERM_HEIGHT];
+char term_attrs[TERM_WIDTH * TERM_HEIGHT];
+volatile int term_cursor_x;
+volatile int term_cursor_y;
+volatile bool term_cursor_visible;
+
+int min(int a, int b) {return (a > b) ? b : a;}
+int max(int a, int b) {return (a > b) ? a : b;}
 
 char* putc_normal(char c);
 char* putc_escape(char c);
@@ -30,30 +52,200 @@ char* putc_bracket(char c);
 char* putc_setg0(char c);
 char* putc_setg1(char c);
 char* putc_ignore(char c);
+char* putc_unicode1(char c);
+char* putc_unicode2(char c);
+char* putc_unicode3(char c);
 
-char* putc_normal(char c) {
-  switch (c) {
-    case 27: // Escape
-      term_putc = putc_escape;
-      break;
-    case 14: // Lock shift G1
-      use_g1 = true;
-      break;
-    case 15: // Lock shift G0
-      use_g1 = false;
-      break;
-    default:
-      int bgcolor = attr_reverse ? attr_fgcolor : attr_bgcolor;
-      int fgcolor = attr_reverse ? attr_bgcolor : attr_fgcolor;
-      if (attr_bright) fgcolor |= 8;
-      bool graphics = c > 0x5e && c < 0x7f && (use_g1 ? g1_graphics : g0_graphics;
-      put(unicodetocodepoint(c, graphics), fgcolor, bgcolor, attr_underline);
+char* (*term_putc)(char) = putc_normal;
+
+void clear_screen() {
+  int len = TERM_WIDTH * TERM_HEIGHT;
+  memset(term_chars, unicodetocodepage(32, false), len);
+  memset(term_attrs, 0, len);
+}
+
+void clear_chars(int n) {
+  if (term_cursor_x >= TERM_WIDTH) return;
+  int dst = term_cursor_y * TERM_WIDTH + term_cursor_x;
+  int len = min(n, TERM_WIDTH - term_cursor_x);
+  memset(term_chars + dst, unicodetocodepage(32, false), len);
+  memset(term_attrs + dst, 0, len);
+}
+
+void clear_end_of_line() {
+  if (term_cursor_x >= TERM_WIDTH) return;
+  int dst = term_cursor_y * TERM_WIDTH + term_cursor_x;
+  int len = TERM_WIDTH - term_cursor_x;
+  memset(term_chars + dst, unicodetocodepage(32, false), len);
+  memset(term_attrs + dst, 0, len);
+}
+
+void clear_start_of_line() {
+  int dst = term_cursor_y * TERM_WIDTH;
+  int len = min(TERM_WIDTH, term_cursor_x + 1);
+  memset(term_chars + dst, unicodetocodepage(32, false), len);
+  memset(term_attrs + dst, 0, len);
+}
+
+void clear_line() {
+  int dst = term_cursor_y * TERM_WIDTH;
+  memset(term_chars + dst, unicodetocodepage(32, false), TERM_WIDTH);
+  memset(term_attrs + dst, 0, TERM_WIDTH);
+}
+
+void clear_end_of_screen() {
+  int dst = term_cursor_y * TERM_WIDTH + min(TERM_WIDTH, term_cursor_x);
+  int len = (TERM_WIDTH * TERM_HEIGHT) - dst;
+  memset(term_chars + dst, unicodetocodepage(32, false), len);
+  memset(term_attrs + dst, 0, len);
+}
+
+void clear_start_of_screen() {
+  int len = term_cursor_y * TERM_WIDTH + min(TERM_WIDTH, term_cursor_x + 1);
+  memset(term_chars, unicodetocodepage(32, false), len);
+  memset(term_attrs, 0, len);
+}
+
+void delete_chars(int n) {
+  if (term_cursor_x >= TERM_WIDTH) return;
+  n = min(n, TERM_WIDTH - term_cursor_x);
+  int dst = term_cursor_y * TERM_WIDTH + term_cursor_x;
+  int src = dst + n;
+  int len = TERM_WIDTH - term_cursor_x - n;
+  memmove(term_chars + dst, term_chars + src, len);
+  memmove(term_attrs + dst, term_attrs + src, len);
+  // FIXME: clear new character spaces
+}
+
+void insert_chars(int n) {
+  if (term_cursor_x >= TERM_WIDTH) return;
+  n = min(n, TERM_WIDTH - term_cursor_x);
+  int src = term_cursor_y * TERM_WIDTH + term_cursor_x;
+  int dst = dst + n;
+  int len = TERM_WIDTH - term_cursor_x - n;
+  memmove(term_chars + dst, term_chars + src, len);
+  memmove(term_attrs + dst, term_attrs + src, len);
+  // FIXME: clear new character spaces
+}
+
+void scroll_up(int top, int n) {
+  // FIXME: optimise this
+  int dst = top * TERM_WIDTH;
+  int src = dst + TERM_WIDTH;
+  int len = (term_cursor_y - top) * TERM_WIDTH;
+  for (int i = 0; i < n; i++) {
+    memmove(term_chars + dst, term_chars + src, len);
+    memmove(term_attrs + dst, term_attrs + src, len);
+    clear_line();
   }
 }
 
-char* putc_escape(char c) {
-  paramc = 0;
+void scroll_down(int bottom, int n) {
+  // FIXME: optimise this
+  int src = term_cursor_y * TERM_WIDTH;
+  int dst = src + TERM_WIDTH;
+  int len = (bottom - term_cursor_y) * TERM_WIDTH;
+  for (int i = 0; i < n; i++) {
+    memmove(term_chars + dst, term_chars + src, len);
+    memmove(term_attrs + dst, term_attrs + src, len);
+    clear_line();
+  }
+}
+
+void cursor_down() {
+  if (term_cursor_y == scroll_bottom) {
+    scroll_up(scroll_top, 1);
+  } else if (term_cursor_y == TERM_HEIGHT - 1) {
+    scroll_up(0, 1);
+  } else {
+    term_cursor_y++;
+  }
+}
+
+void cursor_up() {
+  if (term_cursor_y == scroll_top) {
+    scroll_down(scroll_bottom, 1);
+  } else if (term_cursor_y == 0) {
+    scroll_down(TERM_HEIGHT - 1, 1);
+  } else {
+    term_cursor_y--;
+  }
+}
+
+void print_char(char c) {
+  if (mode_insert) insert_chars(1);
+  int dst = term_cursor_y * TERM_WIDTH + term_cursor_x;
+  int bgcolor = attr_reverse ? attr_fgcolor : attr_bgcolor;
+  int fgcolor = attr_reverse ? attr_bgcolor : attr_fgcolor;
+  if (attr_bright) fgcolor |= 8;
+  term_chars[dst] = c;
+  term_attrs[dst] = (attr_underline << 7) | (bgcolor << 4) | fgcolor;
+  term_cursor_x++;
+}
+
+char* putc_normal(char c) {
   switch (c) {
+    case 8: // Backspace
+      if (term_cursor_x > 0) term_cursor_x--;
+      break;
+    case 9: // Tab
+      while (term_cursor_x < TERM_WIDTH - 1) {
+        term_cursor_x++;
+        if (tabs[term_cursor_x]) break;
+      }
+      break;
+    case 10: case 11: case 12: // Linefeed
+      cursor_down();
+      if (mode_crlf) term_cursor_x = 0;
+      break;
+    case 13: // Carriage return
+      term_cursor_x = 0;
+      break;
+    case 14: // Lock shift G1
+      mode_shiftout = true;
+      break;
+    case 15: // Lock shift G0
+      mode_shiftout = false;
+      break;
+    case 24: case 26: // Cancel
+      break;
+    case 27: // Escape
+      term_putc = putc_escape;
+      break;
+    default:
+      if (c < 32) break;
+      if (c >= 192 && c <= 223) {
+        unicode = c & 31;
+        term_putc = putc_unicode1;
+        break;
+      }
+      if (c >= 224 && c <= 239) {
+        unicode = c & 15;
+        term_putc = putc_unicode2;
+        break;
+      }
+      if (c >= 240 && c <= 247) {
+        unicode = c & 7;
+        term_putc = putc_unicode3;
+        break;
+      }
+      if (term_cursor_x >= TERM_WIDTH) {
+        cursor_down();
+        term_cursor_x = 0;
+      }
+      print_char(unicodetocodepage(c, mode_shiftout ? g1_graphics : g0_graphics));
+  }
+  return "";
+}
+
+char* putc_escape(char c) {
+  term_putc = putc_normal;
+  paramc = 1;
+  params[0] = 0;
+  params[1] = 0;
+  switch (c) {
+    case 24: case 26: // Cancel
+      break;
     case 27: // Escape
       term_putc = putc_escape;
       break;
@@ -70,19 +262,19 @@ char* putc_escape(char c) {
       term_putc = putc_ignore;
       break;
     case 'D': // Cursor down
-      cursor_down(1);
+      cursor_down();
       break;
     case 'M': // Cursor up
-      cursor_up(1);
+      cursor_up();
       break;
     case 'E': // CR + NL
-      cursor_down(1);
-      set_cursor_x(0);
+      cursor_down();
+      term_cursor_x = 0;
       break;
     case '7': // Save attributes and cursor position
     case 's':
-      saved_x = get_cursor_x();
-      saved_y = get_cursor_y();
+      saved_x = term_cursor_x;
+      saved_y = term_cursor_y;
       saved_fgcolor = attr_fgcolor;
       saved_bgcolor = attr_bgcolor;
       saved_bright = attr_bright;
@@ -91,8 +283,8 @@ char* putc_escape(char c) {
       break;
     case '8': // Restore attributes and cursor position
     case 'u':
-      set_cursor_x(saved_x);
-      set_cursor_y(saved_y);
+      term_cursor_x = saved_x;
+      term_cursor_y = saved_y;
       attr_fgcolor = saved_fgcolor;
       attr_bgcolor = saved_bgcolor;
       attr_bright = saved_bright;
@@ -100,22 +292,25 @@ char* putc_escape(char c) {
       attr_reverse = saved_reverse;
       break;
     case '=': // Keypad into applications mode
-      keypad_app = true;
+      mode_appkeypad = true;
       break;
     case '>': // Keypad into numeric mode
-      keypad_app = false;
+      mode_appkeypad = false;
       break;
     case 'Z': // Report terminal type
       return "\033[?1;0c";
       break;
     case 'c': // Reset to initial state
-      set_scroll_region(0, INT_MAX);
-      set_cursor_x(0);
-      set_cursor_y(0);
+      scroll_top = 0;
+      scroll_bottom = TERM_HEIGHT - 1;
+      memset(tabs, 0, sizeof(bool) * TERM_WIDTH);
+      term_cursor_x = 0;
+      term_cursor_y = 0;
+      term_cursor_visible = true;
       clear_screen();
       g0_graphics = false;
       g1_graphics = false;
-      use_g1 = false;
+      mode_shiftout = false;
       mode_appkeypad = false;
       mode_insert = false;
       mode_origin = false;
@@ -134,27 +329,24 @@ char* putc_escape(char c) {
       saved_reverse = false;
       break;
     case 'H': // Set tab at current position
-      set_tab();
+      if (term_cursor_x < TERM_WIDTH) tabs[term_cursor_x] = true;
       break;
-    default:
-      term_putc = putc_normal;
   }
+  return "";
 }
 
 char* putc_bracket(char c) {
   term_putc = putc_normal;
   switch (c) {
+    case 24: case 26: // Cancel
+      break;
     case 27: // Escape
       term_putc = putc_escape;
       break;
     case '0': case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8': case '9':
       term_putc = putc_bracket;
-      if (paramc == 0) {
-        paramc = 1;
-        params[0] = 0;
-      }
-      params[paramc - 1] = (params[paramc] * 10) + c - '0';
+      params[paramc - 1] = (params[paramc - 1] * 10) + c - '0';
       break;
     case ';':
       term_putc = putc_bracket;
@@ -165,64 +357,67 @@ char* putc_bracket(char c) {
       term_putc = putc_bracket;
       break;
     case 'A': // Cursor up
-      cursor_up(paramc < 1 ? 1 : params[0]);
+      term_cursor_y = max(scroll_top, term_cursor_y - max(1, params[0]));
       break;
     case 'B': // Cursor down
-      cursor_down(paramc < 1 ? 1 : params[0]);
+      term_cursor_y = min(scroll_bottom, term_cursor_y + max(1, params[0]));
       break;
     case 'C': // Cursor right
-      cursor_right(paramc < 1 ? 1 : params[0]);
+      term_cursor_x = min(TERM_WIDTH - 1, term_cursor_x + max(1, params[0]));
       break;
     case 'D': // Cursor left
-      cursor_left(paramc < 1 ? 1 : params[0]);
+      term_cursor_x = max(0, term_cursor_x - max(1, params[0]));
       break;
     case 'X': // Clear characters
-      erase_chars(paramc < 1 ? 1 : params[0]);
+      clear_chars(max(1, params[0]));
       break;
     case 'K': // Clear line
-      if (paramc == 0) {
-        clear_end_of_line();
-      } else if (params[0] == 0) {
-        clear_end_of_line();
-      } else if (params[0] == 1) {
-        clear_start_of_line();
-      } else if (params[0] == 2) {
-        clear_line();
+      switch (params[0]) {
+        case 0:
+          clear_end_of_line();
+          break;
+        case 1:
+          clear_start_of_line();
+          break;
+        case 2:
+          clear_line();
+          break;
       }
       break;
     case 'J': // Clear screen
-      if (paramc == 0) {
-        clear_end_of_screen();
-      } else if (params[0] == 0) {
-        clear_end_of_screen();
-      } else if (params[0] == 1) {
-        clear_start_of_screen();
-      } else if (params[0] == 2) {
-        clear_screen();
+      switch (params[0]) {
+        case 0:
+          clear_end_of_screen();
+          break;
+        case 1:
+          clear_start_of_screen();
+          break;
+        case 2:
+          clear_screen();
+          break;
       }
       break;
     case 'n': // Device status report
-      if (paramc > 0 && params[0] == 5) {
-        return "\033[0n";
-      } else if (paramc > 0 && params[0] == 6) {
-        char temp[32];
-        sprintf(temp, "\033[%d;%dR", get_cursor_y() + 1, get_cursor_x() + 1);
-        return temp
+      switch (params[0]) {
+        case 5:
+          return "\033[0n";
+        case 6:
+          sprintf(temp, "\033[%d;%dR", term_cursor_y + 1, term_cursor_x + 1);
+          return temp;
       }
       break;
     case 'c': // Identify
       return "\033[?1;2c";
       break;
     case 'x': // Request terminal parameters
-      if (paramc > 0 && params[0] == 1) {
+      if (params[0] == 1) {
         return "\033[3;1;1;120;120;1;0x";
-      } else {
-        return "\033[2;1;1;120;120;1;0x";
       }
+      return "\033[2;1;1;120;120;1;0x";
       break;
     case 's': // Save attributes and cursor position
-      saved_x = get_cursor_x();
-      saved_y = get_cursor_y();
+      saved_x = term_cursor_x;
+      saved_y = term_cursor_y;
       saved_fgcolor = attr_fgcolor;
       saved_bgcolor = attr_bgcolor;
       saved_bright = attr_bright;
@@ -230,8 +425,8 @@ char* putc_bracket(char c) {
       saved_reverse = attr_reverse;
       break;
     case 'u': // Restore attributes and cursor position
-      set_cursor_x(saved_x);
-      set_cursor_y(saved_y);
+      term_cursor_x = saved_x;
+      term_cursor_y = saved_y;
       attr_fgcolor = saved_fgcolor;
       attr_bgcolor = saved_bgcolor;
       attr_bright = saved_bright;
@@ -249,14 +444,17 @@ char* putc_bracket(char c) {
             break;
           case 6:
             mode_origin = true;
+            term_cursor_x = 0;
+            term_cursor_y = scroll_top;
             break;
           case 20:
             mode_crlf = true;
             break;
           case 25:
-            hide_cursor();
+            term_cursor_visible = true;
             break;
         }
+      }
       break;
     case 'l': // Reset setting
       for (int i = 0; i < paramc; i++) {
@@ -269,28 +467,36 @@ char* putc_bracket(char c) {
             break;
           case 6:
             mode_origin = false;
+            term_cursor_x = 0;
+            term_cursor_y = 0;
             break;
           case 20:
             mode_crlf = false;
             break;
           case 25:
-            show_cursor();
+            term_cursor_visible = false;
             break;
+        }
+      }
       break;
     case 'H': // Set cursor position
     case 'f':
-      set_cursor_y(paramc < 1 ? 0 : max(0, params[0] - 1));
-      set_cursor_x(paramc < 2 ? 0 : max(0, params[1] - 1));
+      if (mode_origin) {
+        term_cursor_y = min(TERM_HEIGHT - 1, scroll_top + max(0, params[0] - 1));
+      } else {
+        term_cursor_y = min(TERM_HEIGHT - 1, max(0, params[0] - 1));
+      }
+      term_cursor_x = max(0, params[1] - 1);
       break;
     case 'G': // Cursor to column x
     case '`':
-      set_cursor_x(paramc < 1 ? 0 : max(0, params[0] - 1));
+      term_cursor_x = max(0, params[0] - 1);
       break;
     case 'g': // Clear tab stops
-      if (paramc < 1 || params[0] == 0) {
-        clear_tab();
+      if (params[0] == 0) {
+        if (term_cursor_x < TERM_WIDTH) tabs[term_cursor_x] = false;
       } else {
-        clear_all_tabs();
+        memset(tabs, 0, sizeof(bool) * TERM_WIDTH);
       }
       break;
     case 'm': // Set attribute
@@ -334,29 +540,41 @@ char* putc_bracket(char c) {
               attr_bgcolor = params[i] - 40;
             }
         }
+      }
       break;
     case 'L': // Insert lines
-      insert_lines(paramc < 1 ? 1 : params[0]);
+      if (term_cursor_y < scroll_bottom) {
+        scroll_down(scroll_bottom, max(1, params[0]));
+      } else {
+        scroll_down(TERM_HEIGHT - 1, max(1, params[0]));
+      }
       break;
     case 'M': // Delete lines
-      delete_lines(paramc < 1 ? 1 : params[0]);
+      if (term_cursor_y < scroll_bottom) {
+        scroll_up(scroll_bottom, max(1, params[0]));
+      } else {
+        scroll_up(TERM_HEIGHT - 1, max(1, params[0]));
+      }
       break;
     case 'P': // Delete characters
-      delete_chars(paramc < 1 ? 1 : params[0]);
+      delete_chars(max(1, params[0]));
       break;
     case '@': // Insert characters
-      insert_chars(paramc < 1 ? 1 : params[0]);
+      insert_chars(max(1, params[0]));
       break;
     case 'r': // Set scroll region
-      set_scroll_top(paramc < 1 ? 0 : max(0, params[0] - 1));
-      set_scroll_bottom(paramc < 2 ? 0 : max(0, params[1] - 1));
+      scroll_top = min(TERM_HEIGHT - 2, max(0, params[0] - 1));
+      scroll_bottom = min(TERM_HEIGHT - 1, max(scroll_top + 1, params[1] - 1));
       break;
   }
+  return "";
 }
 
 char* putc_setg0(char c) {
   term_putc = putc_normal;
   switch (c) {
+    case 24: case 26: // Cancel
+      break;
     case 27: // Escape
       term_putc = putc_escape;
       break;
@@ -366,11 +584,14 @@ char* putc_setg0(char c) {
     default:
       g0_graphics = false;
   }
+  return "";
 }
 
 char* putc_setg1(char c) {
   term_putc = putc_normal;
   switch (c) {
+    case 24: case 26: // Cancel
+      break;
     case 27: // Escape
       term_putc = putc_escape;
       break;
@@ -380,6 +601,7 @@ char* putc_setg1(char c) {
     default:
       g1_graphics = false;
   }
+  return "";
 }
 
 char* putc_ignore(char c) {
@@ -388,5 +610,52 @@ char* putc_ignore(char c) {
   } else {
     term_putc = putc_normal;
   }
+  return "";
 }
 
+char* putc_unicode1(char c) {
+  unicode = (unicode << 6) | (c & 63);
+  term_putc = putc_normal;
+  return "";
+}
+
+char* putc_unicode2(char c) {
+  unicode = (unicode << 6) | (c & 63);
+  term_putc = putc_unicode1;
+  return "";
+}
+
+char* putc_unicode3(char c) {
+  unicode = (unicode << 6) | (c & 63);
+  term_putc = putc_unicode2;
+  return "";
+}
+
+void term_init() {
+  putc_escape('c');
+}
+
+char* term_keypress(int keycode) {
+  switch (keycode) {
+    case TERM_KC_UP:
+      return mode_appkeypad ? "\x2bOA" : "\x1b[A";
+    case TERM_KC_DOWN:
+      return mode_appkeypad ? "\x2bOB" : "\x1b[B";
+    case TERM_KC_RIGHT:
+      return mode_appkeypad ? "\x2bOC" : "\x1b[C";
+    case TERM_KC_LEFT:
+      return mode_appkeypad ? "\x2bOD" : "\x1b[D";
+    case TERM_KC_HOME:
+      return mode_appkeypad ? "\x2bOH" : "\x1b[H";
+    case TERM_KC_END:
+      return mode_appkeypad ? "\x2bOF" : "\x1b[F";
+    case TERM_KC_PGUP:
+      return "\x1b[5~";
+    case TERM_KC_PGDN:
+      return "\x1b[6~";
+    default:
+      temp[0] = keycode;
+      temp[1] = 0;
+      return temp;
+  }
+}

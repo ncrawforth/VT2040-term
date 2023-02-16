@@ -1,9 +1,8 @@
 #define TERM_WIDTH 80
 #define TERM_HEIGHT 24
 
-extern uint8_t term_chars[TERM_WIDTH * TERM_HEIGHT];
-extern uint8_t term_attrs[TERM_WIDTH * TERM_HEIGHT];
-
+extern char term_chars[TERM_WIDTH * TERM_HEIGHT];
+extern char term_attrs[TERM_WIDTH * TERM_HEIGHT];
 extern volatile int term_cursor_x;
 extern volatile int term_cursor_y;
 extern volatile bool term_cursor_visible;
@@ -20,3 +19,7 @@ extern volatile bool term_cursor_visible;
 #define TERM_KC_PGDN 261
 #define TERM_KC_HOME 262
 #define TERM_KC_END 263
+
+extern char* (*term_putc)(char);
+void term_init();
+char* term_keypress(int keycode);
