@@ -615,6 +615,7 @@ char* putc_ignore(char c) {
 
 char* putc_unicode1(char c) {
   unicode = (unicode << 6) | (c & 63);
+  print_char(unicodetocodepage(unicode, false));
   term_putc = putc_normal;
   return "";
 }
