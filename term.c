@@ -242,7 +242,7 @@ char* putc_normal(char c) {
 
 char* putc_escape(char c) {
   term_putc = putc_normal;
-  paramc = 1;
+  paramc = 0;
   params[0] = 0;
   params[1] = 0;
   switch (c) {
@@ -347,10 +347,12 @@ char* putc_bracket(char c) {
     case '0': case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8': case '9':
       term_putc = putc_bracket;
+      if (paramc == 0) paramc = 1;
       params[paramc - 1] = (params[paramc - 1] * 10) + c - '0';
       break;
     case ';':
       term_putc = putc_bracket;
+      if (paramc == 0) paramc = 1;
       paramc++;
       params[paramc - 1] = 0;
       break;
@@ -408,7 +410,7 @@ char* putc_bracket(char c) {
       }
       break;
     case 'c': // Identify
-      if (params[0] == 0) {
+      if (paramc == 0) {
         return "\033[?1;2c";
       }
       break;
@@ -502,7 +504,7 @@ char* putc_bracket(char c) {
       }
       break;
     case 'm': // Set attribute
-      for (int i = 0; i < paramc; i++) {
+      for (int i = 0; i < max(1, paramc); i++) {
         switch (params[i]) {
           case 0:
             attr_bgcolor = 0;
