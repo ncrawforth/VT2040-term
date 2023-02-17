@@ -132,6 +132,7 @@ void insert_chars(int n) {
 
 void scroll_up(int top, int n) {
   // FIXME: optimise this
+  n = min(n, term_cursor_y + 1 - top);
   int dst = top * TERM_WIDTH;
   int src = dst + TERM_WIDTH;
   int len = (term_cursor_y - top) * TERM_WIDTH;
@@ -144,6 +145,7 @@ void scroll_up(int top, int n) {
 
 void scroll_down(int bottom, int n) {
   // FIXME: optimise this
+  n = min(n, bottom + 1 - term_cursor_y);
   int src = term_cursor_y * TERM_WIDTH;
   int dst = src + TERM_WIDTH;
   int len = (bottom - term_cursor_y) * TERM_WIDTH;
@@ -351,6 +353,7 @@ char* putc_bracket(char c) {
       params[paramc - 1] = (params[paramc - 1] * 10) + c - '0';
       break;
     case ';':
+      if (paramc == 16) break; // Cancel sequence if it has more than 16 params
       term_putc = putc_bracket;
       if (paramc == 0) paramc = 1;
       paramc++;
