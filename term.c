@@ -408,7 +408,10 @@ char* putc_bracket(char c) {
       }
       break;
     case 'c': // Identify
-      return "\033[?1;2c";
+      if (params[0] == 0) {
+        return "\033[?1;2c";
+      }
+      break;
     case 'x': // Request terminal parameters
       if (params[0] == 1) {
         return "\033[3;1;1;120;120;1;0x";
