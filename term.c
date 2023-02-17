@@ -114,18 +114,20 @@ void delete_chars(int n) {
   int len = TERM_WIDTH - term_cursor_x - n;
   memmove(term_chars + dst, term_chars + src, len);
   memmove(term_attrs + dst, term_attrs + src, len);
-  // FIXME: clear new character spaces
+  memset(term_chars + dst + len, unicodetocodepage(32, false), n);
+  memset(term_attrs + dst + len, 0, n);
 }
 
 void insert_chars(int n) {
   if (term_cursor_x >= TERM_WIDTH) return;
   n = min(n, TERM_WIDTH - term_cursor_x);
   int src = term_cursor_y * TERM_WIDTH + term_cursor_x;
-  int dst = dst + n;
+  int dst = src + n;
   int len = TERM_WIDTH - term_cursor_x - n;
   memmove(term_chars + dst, term_chars + src, len);
   memmove(term_attrs + dst, term_attrs + src, len);
-  // FIXME: clear new character spaces
+  memset(term_chars + src, unicodetocodepage(32, false), n);
+  memset(term_attrs + src, 0, n);
 }
 
 void scroll_up(int top, int n) {
@@ -412,7 +414,6 @@ char* putc_bracket(char c) {
         return "\033[3;1;1;120;120;1;0x";
       }
       return "\033[2;1;1;120;120;1;0x";
-      break;
     case 's': // Save attributes and cursor position
       saved_x = term_cursor_x;
       saved_y = term_cursor_y;
