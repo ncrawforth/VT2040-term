@@ -653,6 +653,12 @@ char* term_keypress(int keycode) {
       return "\x1b[5~";
     case TERM_KC_PGDN:
       return "\x1b[6~";
+    case TERM_KC_POUND_SIGN:
+      return "\xc2\xa3";
+    case TERM_KC_DEGREE_SIGN:
+      return "\xc2\xb0";
+    case TERM_KC_LATIN_SMALL_LETTER_AE:
+      return "\xc3\xa6";
     default:
       temp[0] = keycode;
       temp[1] = 0;
