@@ -298,8 +298,7 @@ char* putc_escape(char c) {
       mode_appkeypad = false;
       break;
     case 'Z': // Report terminal type
-      return "\033[?1;0c";
-      break;
+      return "\033[?1;2c";
     case 'c': // Reset to initial state
       scroll_top = 0;
       scroll_bottom = TERM_HEIGHT - 1;
@@ -408,7 +407,6 @@ char* putc_bracket(char c) {
       break;
     case 'c': // Identify
       return "\033[?1;2c";
-      break;
     case 'x': // Request terminal parameters
       if (params[0] == 1) {
         return "\033[3;1;1;120;120;1;0x";
