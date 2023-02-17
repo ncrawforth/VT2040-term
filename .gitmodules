@@ -1,3 +1,4 @@
 [submodule "VT2040-font"]
 	path = VT2040-font
 	url = https://github.com/ncrawforth/VT2040-font
+	branch = main
