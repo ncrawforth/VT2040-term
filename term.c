@@ -643,7 +643,7 @@ void term_init() {
   putc_escape('c');
 }
 
-char* term_keypress(int keycode) {
+char* term_keypress(int32_t keycode) {
   switch (keycode) {
     case TERM_KC_UP:
       return mode_appkeypad ? "\x2bOA" : "\x1b[A";
@@ -661,15 +661,26 @@ char* term_keypress(int keycode) {
       return "\x1b[5~";
     case TERM_KC_PGDN:
       return "\x1b[6~";
-    case TERM_KC_POUND_SIGN:
-      return "\xc2\xa3";
-    case TERM_KC_DEGREE_SIGN:
-      return "\xc2\xb0";
-    case TERM_KC_LATIN_SMALL_LETTER_AE:
-      return "\xc3\xa6";
     default:
-      temp[0] = keycode;
-      temp[1] = 0;
+      if (keycode <= 0x7f) {
+        temp[0] = keycode;
+        temp[1] = 0;
+      } else if (keycode <= 0x7ff) {
+        temp[0] = 0xc0 | (keycode >> 6);
+        temp[1] = 0x80 | (keycode & 0x3f);
+        temp[2] = 0;
+      } else if (keycode <= 0xffff) {
+        temp[0] = 0xe0 | (keycode >> 12);
+        temp[1] = 0x80 | ((keycode >> 6) & 0x3f);
+        temp[2] = 0x80 | (keycode & 0x3f);
+        temp[3] = 0;
+      } else {
+        temp[0] = 0xf0 | (keycode >> 18);
+        temp[1] = 0x80 | ((keycode >> 12) & 0x3f);
+        temp[2] = 0x80 | ((keycode >> 6) & 0x3f);
+        temp[3] = 0x80 | (keycode & 0x3f);
+        temp[4] = 0;
+      }
       return temp;
   }
 }

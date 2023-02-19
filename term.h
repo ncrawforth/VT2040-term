@@ -11,18 +11,15 @@ extern volatile bool term_cursor_visible;
 #define term_attr_bgcolor(a) (((a) >> 4) & 0x07)
 #define term_attr_underline(a) ((a) >> 7)
 
-#define TERM_KC_UP 256
-#define TERM_KC_DOWN 257
-#define TERM_KC_RIGHT 258
-#define TERM_KC_LEFT 259
-#define TERM_KC_PGUP 260
-#define TERM_KC_PGDN 261
-#define TERM_KC_HOME 262
-#define TERM_KC_END 263
-#define TERM_KC_POUND_SIGN 163
-#define TERM_KC_DEGREE_SIGN 176
-#define TERM_KC_LATIN_SMALL_LETTER_AE 230
+#define TERM_KC_UP 0xE000
+#define TERM_KC_DOWN 0xE001
+#define TERM_KC_RIGHT 0xE002
+#define TERM_KC_LEFT 0xE003
+#define TERM_KC_PGUP 0xE004
+#define TERM_KC_PGDN 0xE005
+#define TERM_KC_HOME 0xE006
+#define TERM_KC_END 0xE007
 
 extern char* (*term_putc)(char);
 void term_init();
-char* term_keypress(int keycode);
+char* term_keypress(int32_t keycode);
