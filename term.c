@@ -8,7 +8,7 @@
 bool g0_graphics; 
 bool g1_graphics;
 bool mode_shiftout;
-bool mode_appkeypad;
+bool mode_appcursor;
 bool mode_insert;
 bool mode_origin;
 bool mode_crlf;
@@ -295,11 +295,9 @@ char* putc_escape(char c) {
       attr_underline = saved_underline;
       attr_reverse = saved_reverse;
       break;
-    case '=': // Keypad into applications mode
-      mode_appkeypad = true;
+    case '=': // Keypad into applications mode (not implemented)
       break;
-    case '>': // Keypad into numeric mode
-      mode_appkeypad = false;
+    case '>': // Keypad into numeric mode (not implemented)
       break;
     case 'Z': // Report terminal type
       return "\033[?1;2c";
@@ -314,7 +312,7 @@ char* putc_escape(char c) {
       g0_graphics = false;
       g1_graphics = false;
       mode_shiftout = false;
-      mode_appkeypad = false;
+      mode_appcursor = false;
       mode_insert = false;
       mode_origin = false;
       mode_crlf = false;
@@ -444,7 +442,7 @@ char* putc_bracket(char c) {
       for (int i = 0; i < paramc; i++) {
         switch (params[i]) {
           case 1:
-            mode_appkeypad = true;
+            mode_appcursor = true;
             break;
           case 4:
             mode_insert = true;
@@ -467,7 +465,7 @@ char* putc_bracket(char c) {
       for (int i = 0; i < paramc; i++) {
         switch (params[i]) {
           case 1:
-            mode_appkeypad = false;
+            mode_appcursor = false;
             break;
           case 4:
             mode_insert = false;
@@ -646,17 +644,17 @@ void term_init() {
 char* term_keypress(int32_t keycode) {
   switch (keycode) {
     case TERM_KC_UP:
-      return mode_appkeypad ? "\x2bOA" : "\x1b[A";
+      return mode_appcursor ? "\x2bOA" : "\x1b[A";
     case TERM_KC_DOWN:
-      return mode_appkeypad ? "\x2bOB" : "\x1b[B";
+      return mode_appcursor ? "\x2bOB" : "\x1b[B";
     case TERM_KC_RIGHT:
-      return mode_appkeypad ? "\x2bOC" : "\x1b[C";
+      return mode_appcursor ? "\x2bOC" : "\x1b[C";
     case TERM_KC_LEFT:
-      return mode_appkeypad ? "\x2bOD" : "\x1b[D";
+      return mode_appcursor ? "\x2bOD" : "\x1b[D";
     case TERM_KC_HOME:
-      return mode_appkeypad ? "\x2bOH" : "\x1b[H";
+      return mode_appcursor ? "\x2bOH" : "\x1b[H";
     case TERM_KC_END:
-      return mode_appkeypad ? "\x2bOF" : "\x1b[F";
+      return mode_appcursor ? "\x2bOF" : "\x1b[F";
     case TERM_KC_PGUP:
       return "\x1b[5~";
     case TERM_KC_PGDN:
