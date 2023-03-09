@@ -497,6 +497,13 @@ char* putc_bracket(char c) {
     case '`':
       term_cursor_x = max(0, params[0] - 1);
       break;
+    case 'd': // Cursor to row y
+      if (mode_origin) {
+        term_cursor_y = min(TERM_HEIGHT - 1, scroll_top + max(0, params[0] - 1));
+      } else {
+        term_cursor_y = min(TERM_HEIGHT - 1, max(0, params[0] - 1));
+      }
+      break;
     case 'g': // Clear tab stops
       if (params[0] == 0) {
         if (term_cursor_x < TERM_WIDTH) tabs[term_cursor_x] = false;
