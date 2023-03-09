@@ -406,7 +406,7 @@ char* putc_bracket(char c) {
         case 5:
           return "\033[0n";
         case 6:
-          sprintf(temp, "\033[%d;%dR", term_cursor_y + 1, term_cursor_x + 1);
+          sprintf(temp, "\033[%d;%dR", term_cursor_y + 1, min(TERM_WIDTH, term_cursor_x + 1));
           return temp;
       }
       break;
