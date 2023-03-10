@@ -130,25 +130,17 @@ void insert_chars(int n) {
   memset(term_attrs + src, 0, n);
 }
 
-void scroll_up(int top, int n) {
+void scroll(int top, int bottom, int n) {
   // FIXME: optimise this
-  n = min(n, term_cursor_y + 1 - top);
+  n = min(n, bottom + 1 - top);
   int dst = top * TERM_WIDTH;
   int src = dst + TERM_WIDTH;
-  int len = (term_cursor_y - top) * TERM_WIDTH;
-  for (int i = 0; i < n; i++) {
-    memmove(term_chars + dst, term_chars + src, len);
-    memmove(term_attrs + dst, term_attrs + src, len);
-    clear_line();
+  if (n < 0) {
+    src = dst;
+    dst = src + TERM_WIDTH;
+    n = 0 - n;
   }
-}
-
-void scroll_down(int bottom, int n) {
-  // FIXME: optimise this
-  n = min(n, bottom + 1 - term_cursor_y);
-  int src = term_cursor_y * TERM_WIDTH;
-  int dst = src + TERM_WIDTH;
-  int len = (bottom - term_cursor_y) * TERM_WIDTH;
+  int len = (bottom - top) * TERM_WIDTH;
   for (int i = 0; i < n; i++) {
     memmove(term_chars + dst, term_chars + src, len);
     memmove(term_attrs + dst, term_attrs + src, len);
@@ -158,9 +150,9 @@ void scroll_down(int bottom, int n) {
 
 void cursor_down() {
   if (term_cursor_y == scroll_bottom) {
-    scroll_up(scroll_top, 1);
+    scroll(scroll_top, scroll_bottom, 1);
   } else if (term_cursor_y == TERM_HEIGHT - 1) {
-    scroll_up(0, 1);
+    scroll(0, TERM_HEIGHT - 1, 1);
   } else {
     term_cursor_y++;
   }
@@ -168,9 +160,9 @@ void cursor_down() {
 
 void cursor_up() {
   if (term_cursor_y == scroll_top) {
-    scroll_down(scroll_bottom, 1);
+    scroll(scroll_top, scroll_bottom, -1);
   } else if (term_cursor_y == 0) {
-    scroll_down(TERM_HEIGHT - 1, 1);
+    scroll(0, TERM_HEIGHT - 1, -1);
   } else {
     term_cursor_y--;
   }
@@ -556,16 +548,16 @@ char* putc_bracket(char c) {
       break;
     case 'L': // Insert lines
       if (term_cursor_y < scroll_bottom) {
-        scroll_down(scroll_bottom, max(1, params[0]));
+        scroll(term_cursor_y, scroll_bottom, 0 - max(1, params[0]));
       } else {
-        scroll_down(TERM_HEIGHT - 1, max(1, params[0]));
+        scroll(term_cursor_y, TERM_HEIGHT - 1, 0 - max(1, params[0]));
       }
       break;
     case 'M': // Delete lines
       if (term_cursor_y < scroll_bottom) {
-        scroll_up(scroll_bottom, max(1, params[0]));
+        scroll(term_cursor_y, scroll_bottom, max(1, params[0]));
       } else {
-        scroll_up(TERM_HEIGHT - 1, max(1, params[0]));
+        scroll(term_cursor_y, TERM_HEIGHT - 1, max(1, params[0]));
       }
       break;
     case 'P': // Delete characters
