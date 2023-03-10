@@ -135,16 +135,19 @@ void scroll(int top, int bottom, int n) {
   n = min(n, bottom + 1 - top);
   int dst = top * TERM_WIDTH;
   int src = dst + TERM_WIDTH;
+  int clr = bottom * TERM_WIDTH;
   if (n < 0) {
     src = dst;
     dst = src + TERM_WIDTH;
+    clr = top * TERM_WIDTH;
     n = 0 - n;
   }
   int len = (bottom - top) * TERM_WIDTH;
   for (int i = 0; i < n; i++) {
     memmove(term_chars + dst, term_chars + src, len);
     memmove(term_attrs + dst, term_attrs + src, len);
-    clear_line();
+    memset(term_chars + clr, unicodetocodepage(32, false), TERM_WIDTH);
+    memset(term_attrs + clr, 0, TERM_WIDTH);
   }
 }
 
